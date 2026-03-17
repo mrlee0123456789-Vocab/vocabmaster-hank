@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>VocabMaster</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+/* === 加载遮罩 === */
+.loading-overlay {
+  position: fixed; inset: 0; background: rgba(15,18,30,0.92);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 9999; gap: 16px;
+}
+.loading-spinner {
+  width: 48px; height: 48px;
+  border: 4px solid rgba(255,255,255,0.1);
+  border-top-color: var(--cyan, #22d3ee);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: #fff; font-size: 14px; }
+.loading-sub  { color: rgba(255,255,255,0.45); font-size: 12px; }
+
+/* === 级别按钮 词数角标 === */
+.level-btn .lvl-count {
+  display: block;
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 2px;
+}
+.level-btn.loading-lvl { opacity: 0.6; }
+
+/* === 词库进度条（进度页） === */
+.progress-item { background: var(--card,#1e2235); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+.progress-level-row { display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.progress-sub { font-size: 11px; color: var(--muted,#6b7280); margin-bottom: 8px; }
+.progress-bar-wrap { height: 6px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+.progress-bar-fill  { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+</style>
+</head>
+<body>
+
+<!-- 加载遮罩 -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text" id="loading-text">正在加载词库…</div>
+  <div class="loading-sub" id="loading-sub">首次加载需要几秒钟</div>
+</div>
+
+<nav class="nav">
+  <div class="nav-title">⚡ VocabMaster</div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="nav-tabs">
+      <div class="nav-tab active" onclick="showPage('home')">首页</div>
+      <div class="nav-tab" onclick="showPage('errors')">错题本</div>
+      <div class="nav-tab" onclick="showPage('master')">熟词本</div>
+      <div class="nav-tab" onclick="showPage('progress')">进度</div>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">退出</button>
+  </div>
+</nav>
+
+<!-- ========== 首页 ========== -->
+<div id="page-home" class="page active">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div class="nav-avatar" id="home-avatar">U</div>
+    <div>
+      <div style="font-size:15px;font-weight:700" id="home-nickname">用户</div>
+      <div style="font-size:12px;color:var(--muted)">连续学习 <span id="home-streak" style="color:var(--yellow,#fbbf24);font-weight:700">0</span> 天</div>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card s-cyan">  <div class="stat-num" id="stat-today">0</div>    <div class="stat-label">今日已学</div></div>
+    <div class="stat-card s-green"> <div class="stat-num" id="stat-accuracy">-</div>  <div class="stat-label">正确率</div></div>
+    <div class="stat-card s-yellow"><div class="stat-num" id="stat-streak">0</div>    <div class="stat-label">连续天数</div></div>
+    <div class="stat-card s-purple"><div class="stat-num" id="stat-mastered">0</div>  <div class="stat-label">熟词数</div></div>
+    <div class="stat-card s-pink">  <div class="stat-num" id="stat-errors">0</div>   <div class="stat-label">错题数</div></div>
+    <div class="stat-card s-orange"><div class="stat-num" id="stat-review">0</div>   <div class="stat-label">待复习</div></div>
+  </div>
+
+  <div id="review-banner" class="review-banner" style="display:none">
+    <div>
+      <div style="font-size:12px;color:var(--muted)">📅 今日待复习</div>
+      <div class="review-count" id="review-count-num">0 个</div>
+    </div>
+    <button class="btn-cyan" onclick="startReview()">立即复习 →</button>
+  </div>
+
+  <div class="card">
+    <div class="section-title">选择词汇级别</div>
+    <div class="level-grid" id="level-grid">
+      <!-- 动态生成 -->
+    </div>
+  </div>
+
+  <button class="btn-primary" id="start-btn" onclick="startNewSession()">开始今日练习（100 题）→</button>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--muted)">
+    每次 100 题 · 艾宾浩斯记忆曲线 · 连续3次答对入熟词本
+  </div>
+  <div style="text-align:center;margin-top:4px;font-size:11px;color:var(--muted,#6b7280)" id="total-count-tip"></div>
+</div>
+
+<!-- ========== 测验页 ========== -->
+<div id="page-quiz" class="page">
+  <div class="quiz-header">
+    <div class="quiz-level-badge" id="quiz-badge">CET-4</div>
+    <div class="quiz-progress-wrap">
+      <div class="quiz-progress"><div class="quiz-progress-bar" id="quiz-bar" style="width:0%"></div></div>
+      <div class="quiz-meta">
+        <div class="quiz-counter" id="quiz-counter">1 / 100</div>
+        <div class="quiz-score" id="quiz-score">✅ 0 &nbsp; ❌ 0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="word-card">
+    <div class="speak-btn" onclick="speakWord()" title="发音">🔊</div>
+    <div class="word-badge" id="word-badge"></div>
+    <div class="word-en"   id="quiz-word">...</div>
+    <div class="word-phonetic" id="quiz-phonetic"></div>
+    <div class="word-pos"  id="quiz-pos"></div>
+  </div>
+
+  <div class="options-grid" id="options-grid"></div>
+  <div class="result-bar"  id="result-bar"></div>
+  <button class="next-btn" id="next-btn" onclick="nextQuestion()">下一题 →</button>
+</div>
+
+<!-- ========== 完成页 ========== -->
+<div id="page-complete" class="page">
+  <div class="complete-card">
+    <div class="complete-icon" id="c-icon">🎉</div>
+    <div class="complete-title" id="c-title">练习完成！</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:4px" id="c-sub">继续保持！</div>
+    <div class="complete-stats">
+      <div class="cs"><div class="cs-num" style="color:var(--green)"  id="c-correct">0</div><div class="cs-label">答对</div></div>
+      <div class="cs"><div class="cs-num" style="color:var(--red)"    id="c-wrong">0</div><div class="cs-label">答错</div></div>
+      <div class="cs"><div class="cs-num" style="color:var(--yellow)" id="c-rate">0%</div><div class="cs-label">正确率</div></div>
+      <div class="cs"><div class="cs-num" style="color:var(--green)"  id="c-new-master">0</div><div class="cs-label">新入熟词</div></div>
+    </div>
+    <button class="btn-primary" onclick="showPage('home')">返回首页</button>
+  </div>
+</div>
+
+<!-- ========== 错题本 ========== -->
+<div id="page-errors" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div class="section-title" style="margin:0">错题本</div>
+    <button class="btn-cyan" onclick="startErrorReview()" id="error-review-btn" style="display:none">复习错题</button>
+  </div>
+  <div id="error-list"></div>
+</div>
+
+<!-- ========== 熟词本 ========== -->
+<div id="page-master" class="page">
+  <div class="section-title" style="margin-bottom:12px">熟词本 🏆</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">连续3次答对的单词自动升入熟词本</div>
+  <div id="master-list"></div>
+</div>
+
+<!-- ========== 进度 ========== -->
+<div id="page-progress" class="page">
+  <div class="section-title" style="margin-bottom:12px">学习进度</div>
+  <div id="progress-list"></div>
+</div>
+
+<script src="js/db.js"></script>
+<script src="js/wordLoader.js"></script>
+<script src="js/words-embedded.js"></script>
+<script>
+// ==========================================
+//  艾宾浩斯复习间隔（天）
+// ==========================================
+const INTERVALS = [1/288, 1/48, 0.5, 1, 2, 4, 7, 15, 30, 60];
+// 5min, 30min, 12h, 1d, 2d, 4d, 7d, 15d, 30d, 60d
+
+let currentUser = null;
+let userData    = null;
+
+// ==========================================
+//  初始化
+// ==========================================
+async function init() {
+  currentUser = DB.requireLogin();
+  if (!currentUser) return;
+  userData = DB.getUserData(currentUser.username);
+
+  // 今日重置
+  const today = new Date().toDateString();
+  if (userData.lastStudyDate !== today) {
+    userData.todayCount = 0;
+    if (userData.lastStudyDate) {
+      const diff = Math.floor((Date.now() - new Date(userData.lastStudyDate)) / 86400000);
+      if (diff > 1) userData.streak = 0;
+    }
+  }
+
+  // 用户信息
+  const nick = currentUser.nickname || currentUser.username;
+  document.getElementById('home-nickname').textContent = nick;
+  document.getElementById('home-avatar').textContent   = nick.charAt(0).toUpperCase();
+
+  // 生成级别按钮
+  renderLevelGrid();
+
+  // 加载默认级别词库（及预热相邻级别）
+  const defaultLvl = userData.selectedLevel || 'cet4';
+  setLoading(true, '正在加载 ' + (WordLoader.getLevelInfo(defaultLvl)||{name:defaultLvl}).name + ' 词库…');
+
+  try {
+    await WordLoader.load(defaultLvl);
+    // 同时预加载已有错题涉及的级别
+    const errorLevels = [...new Set((userData.errorWords||[]).map(e=>e._lvl).filter(Boolean))];
+    WordLoader.preload(errorLevels); // 后台预热，不等待
+  } catch(e) {
+    console.warn('词库加载失败:', e);
+  }
+
+  setLoading(false);
+  save();
+  updateHomeStats();
+  updateTotalCountTip();
+}
+
+function setLoading(show, text='', sub='') {
+  const el  = document.getElementById('loading-overlay');
+  const txt = document.getElementById('loading-text');
+  const s   = document.getElementById('loading-sub');
+  el.style.display = show ? 'flex' : 'none';
+  if (text) txt.textContent = text;
+  if (sub)  s.textContent   = sub;
+}
+
+// ==========================================
+//  级别按钮动态渲染
+// ==========================================
+function renderLevelGrid() {
+  const levels = WordLoader.getAllLevels();
+  const grid   = document.getElementById('level-grid');
+  const sel    = userData.selectedLevel || 'cet4';
+  grid.innerHTML = '';
+  for (const [key, info] of Object.entries(levels)) {
+    const btn = document.createElement('div');
+    btn.className = 'level-btn' + (key === sel ? ' selected' : '');
+    btn.id        = 'lvl-' + key;
+    btn.onclick   = () => selectLevel(key);
+    btn.innerHTML = `${info.name}<span class="sub">${getLevelSubName(key)}</span><span class="lvl-count">${info.count.toLocaleString()} 词</span>`;
+    grid.appendChild(btn);
+  }
+}
+
+function getLevelSubName(key) {
+  const map = {
+    middle:   '初中英语',
+    high:     '高中英语',
+    cet4:     '大学英语四级',
+    cet6:     '大学英语六级',
+    postgrad: '研究生英语',
+    toefl:    '托福词汇',
+    sat:      'SAT 词汇'
+  };
+  return map[key] || key;
+}
+
+function updateTotalCountTip() {
+  const levels = WordLoader.getAllLevels();
+  const total  = Object.values(levels).reduce((s, l) => s + l.count, 0);
+  document.getElementById('total-count-tip').textContent = `📚 总词库 ${total.toLocaleString()} 词，覆盖初中→SAT 七个级别`;
+}
+
+// ==========================================
+//  级别选择
+// ==========================================
+async function selectLevel(lvl) {
+  if (userData.selectedLevel === lvl) return;
+  userData.selectedLevel = lvl;
+  save();
+  document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('selected'));
+  const el = document.getElementById('lvl-' + lvl);
+  if (el) el.classList.add('selected');
+
+  // 如果词库未加载，现在加载
+  if (!WordLoader.isLoaded(lvl)) {
+    const info = WordLoader.getLevelInfo(lvl);
+    setLoading(true, '正在加载 ' + (info ? info.name : lvl) + ' 词库…', `共 ${(info ? info.count : '?').toLocaleString()} 词，稍等片刻`);
+    try { await WordLoader.load(lvl); } catch(e) { console.warn(e); }
+    setLoading(false);
+  }
+}
+
+// ==========================================
+//  持久化
+// ==========================================
+function save() { DB.saveUserData(currentUser.username, userData); }
+
+function doLogout() { DB.logout(); window.location.href = 'index.html'; }
+
+// ==========================================
+//  统计面板
+// ==========================================
+function updateHomeStats() {
+  const total = userData.totalCorrect + userData.totalWrong;
+  const acc   = total > 0 ? Math.round(userData.totalCorrect / total * 100) + '%' : '-';
+  document.getElementById('stat-today').textContent    = userData.todayCount;
+  document.getElementById('stat-accuracy').textContent = acc;
+  document.getElementById('stat-streak').textContent   = userData.streak;
+  document.getElementById('home-streak').textContent   = userData.streak;
+  document.getElementById('stat-mastered').textContent = userData.masterWords.length;
+  document.getElementById('stat-errors').textContent   = userData.errorWords.length;
+
+  const now = Date.now();
+  const due = Object.values(userData.wordProgress)
+    .filter(w => w.nextReview && w.nextReview <= now && !w.mastered).length;
+  document.getElementById('stat-review').textContent = due;
+
+  const banner = document.getElementById('review-banner');
+  if (due > 0) {
+    banner.style.display = 'flex';
+    document.getElementById('review-count-num').textContent = due + ' 个';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+// ==========================================
+//  页面切换
+// ==========================================
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  const tabs = ['home', 'errors', 'master', 'progress'];
+  const idx  = tabs.indexOf(name);
+  if (idx >= 0) document.querySelectorAll('.nav-tab')[idx].classList.add('active');
+
+  if (name === 'home')     updateHomeStats();
+  if (name === 'errors')   renderErrors();
+  if (name === 'master')   renderMaster();
+  if (name === 'progress') renderProgress();
+}
+
+// ==========================================
+//  测验逻辑
+// ==========================================
+let quiz = { words: [], index: 0, correct: 0, wrong: 0, newMastered: 0, mode: 'new' };
+
+function buildWordKey(lvl, idx) { return lvl + '_' + idx; }
+
+// 取未学新词（同步，词库已加载）
+function getNewWords(lvl, count) {
+  const bank = WordLoader.get(lvl) || [];
+  if (!userData.levelIndex) userData.levelIndex = {};
+  if (userData.levelIndex[lvl] == null) userData.levelIndex[lvl] = 0;
+  const result = [];
+  let i = userData.levelIndex[lvl];
+
+  while (result.length < count && i < bank.length) {
+    const key = buildWordKey(lvl, i);
+    if (!userData.wordProgress[key]) {
+      result.push({ ...bank[i], _key: key, _lvl: lvl, _isNew: true });
+      userData.levelIndex[lvl] = i + 1;
+    }
+    i++;
+  }
+  // 循环补充（把学过但未掌握的词也拉进来）
+  if (result.length < count) {
+    userData.levelIndex[lvl] = 0;
+    let j = 0;
+    while (result.length < count && j < bank.length) {
+      const key = buildWordKey(lvl, j);
+      if (!result.find(w => w._key === key)) {
+        result.push({ ...bank[j], _key: key, _lvl: lvl, _isNew: false });
+      }
+      j++;
+    }
+  }
+  return result;
+}
+
+// 取到期复习词（同步，已缓存）
+function getDueWords(count) {
+  const now = Date.now();
+  const result = [];
+  for (const [key, prog] of Object.entries(userData.wordProgress)) {
+    if (prog.mastered) continue;
+    if (!prog.nextReview || prog.nextReview > now) continue;
+    const parts = key.split('_');
+    const lvl   = parts[0];
+    const idx   = parseInt(parts[1]);
+    const word  = WordLoader.getWord(lvl, idx);
+    if (word) {
+      result.push({ ...word, _key: key, _lvl: lvl, _isNew: false });
+      if (result.length >= count) break;
+    }
+  }
+  return result;
+}
+
+// 开始练习（异步：确保词库已加载）
+async function startNewSession() {
+  const lvl = userData.selectedLevel || 'cet4';
+  if (!WordLoader.isLoaded(lvl)) {
+    const info = WordLoader.getLevelInfo(lvl);
+    setLoading(true, '正在加载词库…');
+    try { await WordLoader.load(lvl); } catch(e) {}
+    setLoading(false);
+  }
+  const due    = getDueWords(30);
+  const needed = 100 - due.length;
+  const fresh  = getNewWords(lvl, needed);
+  const words  = shuffleArray([...due, ...fresh]).slice(0, 100);
+  if (words.length === 0) { showToast('暂无词汇！', 'streak'); return; }
+  startQuizWith(words, WordLoader.getLevelInfo(lvl) ? WordLoader.getLevelInfo(lvl).name : lvl.toUpperCase());
+}
+
+async function startReview() {
+  // 复习词可能分布在多个级别，需要它们都已加载
+  const words = getDueWords(100);
+  if (words.length === 0) { showToast('暂无待复习单词！', 'streak'); return; }
+  startQuizWith(words, '复习');
+}
+
+function startErrorReview() {
+  const errorWords = userData.errorWords.slice(0, 100).map(e => ({
+    w: e.w, m: e.m, p: e.p, pos: e.pos, e: e.e,
+    _key: e._key || null, _lvl: e._lvl || null, _isNew: false, _isError: true
+  }));
+  if (errorWords.length === 0) { showToast('暂无错题！', 'streak'); return; }
+  startQuizWith(errorWords, '错题复习');
+}
+
+function startQuizWith(words, label) {
+  quiz = { words, index: 0, correct: 0, wrong: 0, newMastered: 0, mode: label };
+  save();
+  document.getElementById('quiz-badge').textContent = label;
+  showPage('quiz');
+  renderQ();
+}
+
+function renderQ() {
+  const word  = quiz.words[quiz.index];
+  const total = quiz.words.length;
+  const idx   = quiz.index;
+
+  document.getElementById('quiz-counter').textContent  = (idx + 1) + ' / ' + total;
+  document.getElementById('quiz-score').textContent    = '✅ ' + quiz.correct + ' \u00a0 ❌ ' + quiz.wrong;
+  document.getElementById('quiz-bar').style.width      = (idx / total * 100) + '%';
+  document.getElementById('quiz-word').textContent     = word.w;
+  document.getElementById('quiz-phonetic').textContent = word.p || '';
+  document.getElementById('quiz-pos').textContent      = word.pos || '';
+  document.getElementById('result-bar').style.display  = 'none';
+  document.getElementById('next-btn').style.display    = 'none';
+
+  // 标签
+  const badge = document.getElementById('word-badge');
+  if (word._isError)    { badge.textContent = '错题'; badge.className = 'word-badge badge-error'; }
+  else if (word._isNew) { badge.textContent = '新词'; badge.className = 'word-badge badge-new'; }
+  else                  { badge.textContent = '复习'; badge.className = 'word-badge badge-review'; }
+
+  // 生成干扰选项（用 WordLoader 的缓存池）
+  const decoys = WordLoader.getDecoys(word.m, 3);
+  const opts   = shuffleArray([word.m, ...decoys]);
+
+  const grid = document.getElementById('options-grid');
+  grid.innerHTML = '';
+  opts.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.textContent = opt;
+    btn.onclick = () => checkAnswer(opt, word.m, btn);
+    grid.appendChild(btn);
+  });
+}
+
+function checkAnswer(selected, correct, btn) {
+  const bar       = document.getElementById('result-bar');
+  const word      = quiz.words[quiz.index];
+  const isCorrect = selected === correct;
+
+  document.querySelectorAll('.option-btn').forEach(b => {
+    b.disabled = true;
+    if (b.textContent === correct) b.classList.add('reveal');
+  });
+
+  if (isCorrect) {
+    btn.classList.remove('reveal');
+    btn.classList.add('correct');
+    quiz.correct++;
+    userData.totalCorrect++;
+    const mastered = advanceWord(word, true);
+    if (mastered) quiz.newMastered++;
+    bar.className = 'result-bar ok';
+    const prog   = word._key ? userData.wordProgress[word._key] : null;
+    const consec = prog ? prog.consecCorrect : 0;
+    bar.innerHTML =
+      '<div class="result-label">✅ 回答正确！</div>' +
+      '<div class="result-meaning"><b>' + word.w + '</b> ' + (word.pos||'') + ' ' + word.m + '</div>' +
+      (word.e ? '<div class="result-example">' + word.e + '</div>' : '') +
+      (consec > 0 ? '<div class="result-consec">🔥 连续答对 ' + consec + ' 次' +
+        (consec >= 3 ? ' · 已加入熟词本！' : ' / 再对 ' + (3 - consec) + ' 次入熟词本') + '</div>' : '');
+
+    const streak = (parseInt(sessionStorage.getItem('ans_streak') || '0')) + 1;
+    sessionStorage.setItem('ans_streak', streak);
+    if (streak > 0 && streak % 10 === 0) showToast('🔥 连对 ' + streak + ' 题！', 'streak');
+  } else {
+    btn.classList.add('wrong');
+    quiz.wrong++;
+    userData.totalWrong++;
+    advanceWord(word, false);
+    addToErrors(word);
+    bar.className = 'result-bar fail';
+    bar.innerHTML =
+      '<div class="result-label">❌ 答错了</div>' +
+      '<div class="result-meaning"><b>' + word.w + '</b> ' + (word.pos||'') + ' ' + word.m + '</div>' +
+      (word.e ? '<div class="result-example">' + word.e + '</div>' : '') +
+      '<div class="result-consec" style="color:var(--pink,#f472b6)">连续答对次数已重置</div>';
+    sessionStorage.setItem('ans_streak', '0');
+  }
+
+  userData.todayCount++;
+  userData.lastStudyDate = new Date().toDateString();
+  if (!userData.studyDates) userData.studyDates = [];
+  if (!userData.studyDates.includes(userData.lastStudyDate)) {
+    userData.studyDates.push(userData.lastStudyDate);
+  }
+  updateStreak();
+  save();
+
+  bar.style.display                                    = 'block';
+  document.getElementById('next-btn').style.display   = 'block';
+}
+
+// ==========================================
+//  艾宾浩斯 + 熟词本
+// ==========================================
+function advanceWord(word, correct) {
+  if (!word._key) return false;
+  if (!userData.wordProgress[word._key]) {
+    userData.wordProgress[word._key] = { interval: 0, consecCorrect: 0, errorCount: 0, mastered: false };
+  }
+  const prog = userData.wordProgress[word._key];
+  if (prog.mastered) return false;
+
+  if (correct) {
+    prog.interval      = Math.min(prog.interval + 1, INTERVALS.length - 1);
+    prog.consecCorrect = (prog.consecCorrect || 0) + 1;
+    if (prog.consecCorrect >= 3) {
+      prog.mastered = true;
+      addToMaster(word);
+      showToast('🏆 "' + word.w + '" 已加入熟词本！', 'master');
+      return true;
+    }
+  } else {
+    prog.interval      = 0;
+    prog.consecCorrect = 0;
+    prog.errorCount    = (prog.errorCount || 0) + 1;
+  }
+  prog.nextReview = Date.now() + INTERVALS[prog.interval] * 86400000;
+  return false;
+}
+
+function addToErrors(word) {
+  if (!userData.errorWords) userData.errorWords = [];
+  const existing = userData.errorWords.find(e => e.w === word.w);
+  if (existing) {
+    existing.count++;
+    existing.consecCorrect = 0;
+  } else {
+    userData.errorWords.unshift({
+      w: word.w, m: word.m, p: word.p||'', pos: word.pos||'', e: word.e||'',
+      _key: word._key, _lvl: word._lvl, count: 1, consecCorrect: 0
+    });
+    if (userData.errorWords.length > 500) userData.errorWords = userData.errorWords.slice(0, 500);
+  }
+}
+
+function addToMaster(word) {
+  if (!userData.masterWords) userData.masterWords = [];
+  if (!userData.masterWords.find(m => m.w === word.w)) {
+    userData.masterWords.unshift({
+      w: word.w, m: word.m, p: word.p||'', pos: word.pos||'', e: word.e||'',
+      _lvl: word._lvl, masteredAt: Date.now()
+    });
+  }
+  userData.errorWords = (userData.errorWords || []).filter(e => e.w !== word.w);
+}
+
+function updateStreak() {
+  if (!userData.studyDates) { userData.streak = 1; return; }
+  const today = new Date();
+  let streak  = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today); d.setDate(today.getDate() - i);
+    if (userData.studyDates.includes(d.toDateString())) streak++;
+    else break;
+  }
+  userData.streak = streak;
+}
+
+function nextQuestion() {
+  quiz.index++;
+  if (quiz.index >= quiz.words.length) showComplete();
+  else renderQ();
+}
+
+function showComplete() {
+  const total = quiz.words.length;
+  const rate  = total > 0 ? Math.round(quiz.correct / total * 100) : 0;
+  document.getElementById('c-icon').textContent      = rate >= 90 ? '🏆' : rate >= 70 ? '🎉' : '💪';
+  document.getElementById('c-title').textContent     = rate >= 90 ? '太棒了！' : rate >= 70 ? '练习完成！' : '继续加油！';
+  document.getElementById('c-sub').textContent       = rate >= 90 ? '你是词汇大师！' : rate >= 70 ? '正确率不错，保持！' : '错题已记录，坚持就是胜利！';
+  document.getElementById('c-correct').textContent   = quiz.correct;
+  document.getElementById('c-wrong').textContent     = quiz.wrong;
+  document.getElementById('c-rate').textContent      = rate + '%';
+  document.getElementById('c-new-master').textContent = quiz.newMastered;
+  updateHomeStats();
+  showPage('complete');
+}
+
+// ==========================================
+//  发音
+// ==========================================
+function speakWord() {
+  const w = document.getElementById('quiz-word').textContent;
+  if (w && 'speechSynthesis' in window) {
+    const u = new SpeechSynthesisUtterance(w);
+    u.lang = 'en-US'; u.rate = 0.8;
+    speechSynthesis.speak(u);
+  }
+}
+
+// ==========================================
+//  错题本
+// ==========================================
+function renderErrors() {
+  const list = document.getElementById('error-list');
+  const btn  = document.getElementById('error-review-btn');
+  if (!userData.errorWords || userData.errorWords.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-text">暂无错题，继续保持！</div></div>';
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'block';
+  list.innerHTML = userData.errorWords.map(e => {
+    const prog   = e._key ? userData.wordProgress[e._key] : null;
+    const consec = prog ? (prog.consecCorrect || 0) : 0;
+    return '<div class="error-item">' +
+      '<div><div class="error-word">' + e.w + '</div>' +
+      '<div class="error-meaning">' + (e.p||'') + ' ' + (e.pos||'') + ' ' + e.m + '</div></div>' +
+      '<div class="error-right"><div class="error-count">错 ' + e.count + ' 次</div>' +
+      '<div class="consec-badge">连对 ' + consec + '/3</div></div></div>';
+  }).join('');
+}
+
+// ==========================================
+//  熟词本
+// ==========================================
+function renderMaster() {
+  const list = document.getElementById('master-list');
+  if (!userData.masterWords || userData.masterWords.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">🌟</div><div class="empty-text">还没有熟词，连续3次答对即可升入！</div></div>';
+    return;
+  }
+  list.innerHTML = userData.masterWords.map(w => {
+    const date = new Date(w.masteredAt).toLocaleDateString('zh-CN');
+    const info = WordLoader.getLevelInfo(w._lvl);
+    return '<div class="master-item">' +
+      '<div><div class="master-word">' + w.w + '</div>' +
+      '<div class="master-meaning">' + (w.p||'') + ' ' + (w.pos||'') + ' ' + w.m + '</div></div>' +
+      '<div><div class="master-badge">✅ 已掌握</div>' +
+      '<div style="font-size:10px;color:var(--muted2,#4b5563);margin-top:4px">' + (info ? info.name : '') + ' · ' + date + '</div></div>' +
+      '</div>';
+  }).join('');
+}
+
+// ==========================================
+//  进度
+// ==========================================
+function renderProgress() {
+  const levels = WordLoader.getAllLevels();
+  const el     = document.getElementById('progress-list');
+
+  // 显示总览
+  const totalWords   = Object.values(levels).reduce((s,l) => s + l.count, 0);
+  const totalLearned = Object.keys(userData.wordProgress).length;
+  const totalMaster  = (userData.masterWords||[]).length;
+
+  let html = `<div class="progress-item" style="background:linear-gradient(135deg,rgba(34,211,238,0.12),rgba(168,139,250,0.12))">
+    <div class="progress-level-row"><span>📊 总体进度</span><span style="color:var(--cyan,#22d3ee)">${totalLearned.toLocaleString()} / ${totalWords.toLocaleString()}</span></div>
+    <div class="progress-sub">已学习 ${totalLearned.toLocaleString()} 词 · 熟词 ${totalMaster.toLocaleString()} · 总词库 ${totalWords.toLocaleString()}</div>
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${Math.min(totalLearned/totalWords*100,100).toFixed(1)}%;background:linear-gradient(90deg,var(--cyan,#22d3ee),var(--purple,#a78bfa))"></div></div>
+  </div>`;
+
+  for (const [key, info] of Object.entries(levels)) {
+    const total    = info.count;
+    const learned  = Object.keys(userData.wordProgress).filter(k => k.startsWith(key + '_')).length;
+    const mastered = (userData.masterWords||[]).filter(w => w._lvl === key).length;
+    const pct      = total > 0 ? (learned / total * 100) : 0;
+    html += `<div class="progress-item">
+      <div class="progress-level-row">
+        <span>${info.name} <span style="font-size:11px;font-weight:400;color:var(--muted,#6b7280)">${getLevelSubName(key)}</span></span>
+        <span style="color:${info.color}">${learned.toLocaleString()} / ${total.toLocaleString()}</span>
+      </div>
+      <div class="progress-sub">熟词: ${mastered} &nbsp;|&nbsp; 学习中: ${learned - mastered} &nbsp;|&nbsp; 完成度: ${pct.toFixed(1)}%</div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct.toFixed(1)}%;background:${info.color}"></div></div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ==========================================
+//  工具函数
+// ==========================================
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function showToast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+// ==========================================
+//  启动
+// ==========================================
+init();
+</script>
+<script>
+// 注册 Service Worker（离线缓存支持）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => {
+        console.log('[SW] Service Worker 注册成功:', reg.scope);
+      })
+      .catch(err => {
+        console.log('[SW] Service Worker 注册失败:', err);
+      });
+  });
+}
+</script>
+</body>
+</html>
