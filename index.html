@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VocabMaster">
+<meta name="theme-color" content="#06b6d4">
+<link rel="manifest" href="manifest.json">
+<title>VocabMaster · 词汇大师</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+.login-wrap { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+.login-logo { font-size: 48px; margin-bottom: 8px; }
+.login-title { font-size: 28px; font-weight: 800; background: linear-gradient(135deg, var(--cyan), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; }
+.login-sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.login-author { color: var(--muted); font-size: 12px; margin-bottom: 24px; opacity: 0.5; letter-spacing: 1px; }
+.login-card { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px 24px; }
+.tab-switch { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 24px; }
+.tab-switch-btn { flex: 1; padding: 8px; border-radius: 8px; border: none; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.tab-switch-btn.active { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+.form-group { margin-bottom: 16px; }
+.form-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-input { width: 100%; padding: 12px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 15px; outline: none; transition: border-color 0.2s; }
+.form-input:focus { border-color: var(--cyan); }
+.form-input::placeholder { color: var(--muted); }
+.login-btn { width: 100%; padding: 14px; border-radius: 12px; border: none; background: linear-gradient(135deg, var(--purple), var(--pink)); color: white; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px; letter-spacing: 1px; transition: opacity 0.2s; }
+.login-btn:active { opacity: 0.8; }
+.login-hint { text-align: center; margin-top: 16px; font-size: 12px; color: var(--muted); }
+.login-hint b { color: var(--cyan); }
+.error-msg { color: var(--pink); font-size: 13px; text-align: center; margin-top: 8px; min-height: 18px; }
+.admin-hint { margin-top: 16px; padding: 10px 14px; background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3); border-radius: 8px; font-size: 12px; color: var(--purple); text-align: center; }
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-logo">⚡</div>
+  <div class="login-title">VocabMaster</div>
+  <div class="login-sub">智能词汇学习 · 艾宾浩斯记忆曲线</div>
+  <div class="login-author">By Hank</div>
+
+  <div class="login-card">
+    <div class="tab-switch">
+      <button class="tab-switch-btn active" id="tab-login" onclick="switchTab('login')">登 录</button>
+      <button class="tab-switch-btn" id="tab-register" onclick="switchTab('register')">注 册</button>
+    </div>
+
+    <!-- 登录表单 -->
+    <div id="form-login">
+      <div class="form-group">
+        <label class="form-label">用户名</label>
+        <input class="form-input" id="login-username" type="text" placeholder="请输入用户名" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码</label>
+        <input class="form-input" id="login-password" type="password" placeholder="请输入密码" autocomplete="current-password">
+      </div>
+      <div class="error-msg" id="login-error"></div>
+      <button class="login-btn" onclick="doLogin()">登 录</button>
+      <div class="admin-hint">管理员账号：admin / admin888</div>
+    </div>
+
+    <!-- 注册表单 -->
+    <div id="form-register" style="display:none">
+      <div class="form-group">
+        <label class="form-label">用户名</label>
+        <input class="form-input" id="reg-username" type="text" placeholder="3-16位字母或数字">
+      </div>
+      <div class="form-group">
+        <label class="form-label">昵称</label>
+        <input class="form-input" id="reg-nickname" type="text" placeholder="显示名称">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码</label>
+        <input class="form-input" id="reg-password" type="password" placeholder="至少6位">
+      </div>
+      <div class="form-group">
+        <label class="form-label">确认密码</label>
+        <input class="form-input" id="reg-password2" type="password" placeholder="再次输入密码">
+      </div>
+      <div class="error-msg" id="reg-error"></div>
+      <button class="login-btn" onclick="doRegister()">注 册</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/db.js"></script>
+<script src="js/wordLoader.js"></script>
+<script src="js/words-embedded.js"></script>
+<script>
+function switchTab(tab) {
+  document.getElementById('form-login').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('form-register').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+}
+
+function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const err = document.getElementById('login-error');
+  if (!username || !password) { err.textContent = '请填写用户名和密码'; return; }
+  const result = DB.login(username, password);
+  if (result.ok) {
+    if (result.user.role === 'admin') {
+      window.location.href = 'admin.html';
+    } else {
+      window.location.href = 'app.html';
+    }
+  } else {
+    err.textContent = result.msg;
+  }
+}
+
+function doRegister() {
+  const username = document.getElementById('reg-username').value.trim();
+  const nickname = document.getElementById('reg-nickname').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const password2 = document.getElementById('reg-password2').value;
+  const err = document.getElementById('reg-error');
+  if (!username || !password || !nickname) { err.textContent = '请填写所有字段'; return; }
+  if (!/^[a-zA-Z0-9]{3,16}$/.test(username)) { err.textContent = '用户名需3-16位字母或数字'; return; }
+  if (password.length < 6) { err.textContent = '密码至少6位'; return; }
+  if (password !== password2) { err.textContent = '两次密码不一致'; return; }
+  const result = DB.register(username, password, nickname);
+  if (result.ok) {
+    err.style.color = 'var(--green)';
+    err.textContent = '注册成功！请登录';
+    setTimeout(() => { err.style.color = ''; switchTab('login'); }, 1000);
+  } else {
+    err.textContent = result.msg;
+  }
+}
+
+// 回车登录
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (document.getElementById('form-login').style.display !== 'none') doLogin();
+    else doRegister();
+  }
+});
+
+// 已登录则跳转
+if (DB.currentUser()) {
+  const u = DB.currentUser();
+  window.location.href = u.role === 'admin' ? 'admin.html' : 'app.html';
+}
+</script>
+</body>
+</html>
