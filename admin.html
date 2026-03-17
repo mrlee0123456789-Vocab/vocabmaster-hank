@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VocabMaster · 管理员后台</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+.admin-nav { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:var(--card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100; }
+.admin-nav-title { font-size:17px; font-weight:800; color:var(--purple); }
+.admin-body { max-width:800px; margin:0 auto; padding:20px 16px; }
+.admin-tabs { display:flex; gap:6px; margin-bottom:18px; }
+.admin-tab { padding:8px 18px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:13px; cursor:pointer; transition:all 0.2s; }
+.admin-tab.active { background:rgba(124,58,237,0.2); color:var(--purple); border-color:rgba(124,58,237,0.4); }
+.admin-page { display:none; }
+.admin-page.active { display:block; }
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; display:none; align-items:center; justify-content:center; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:360px; }
+.modal-title { font-size:17px; font-weight:700; margin-bottom:16px; }
+.modal-actions { display:flex; gap:10px; margin-top:16px; justify-content:flex-end; }
+</style>
+</head>
+<body>
+
+<nav class="admin-nav">
+  <div class="admin-nav-title">⚡ VocabMaster 管理后台</div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:12px;color:var(--muted)">管理员</span>
+    <button class="logout-btn" onclick="doLogout()">退出</button>
+  </div>
+</nav>
+
+<div class="admin-body">
+  <!-- 切换标签 -->
+  <div class="admin-tabs">
+    <button class="admin-tab active" onclick="switchTab('overview')">概览</button>
+    <button class="admin-tab" onclick="switchTab('users')">用户管理</button>
+  </div>
+
+  <!-- 概览 -->
+  <div id="tab-overview" class="admin-page active">
+    <div class="admin-stats">
+      <div class="admin-stat-card"><div class="admin-stat-num" style="color:var(--cyan)" id="s-total-users">0</div><div class="admin-stat-label">注册用户数</div></div>
+      <div class="admin-stat-card"><div class="admin-stat-num" style="color:var(--green)" id="s-active-users">0</div><div class="admin-stat-label">正常用户</div></div>
+      <div class="admin-stat-card"><div class="admin-stat-num" style="color:var(--yellow)" id="s-total-correct">0</div><div class="admin-stat-label">全局总答题</div></div>
+      <div class="admin-stat-card"><div class="admin-stat-num" style="color:var(--purple)" id="s-total-mastered">0</div><div class="admin-stat-label">全局熟词数</div></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">全局排行榜（熟词数 Top 10）</div>
+      <div id="leaderboard"></div>
+    </div>
+  </div>
+
+  <!-- 用户管理 -->
+  <div id="tab-users" class="admin-page">
+    <input type="text" class="search-box" id="user-search" placeholder="搜索用户名或昵称..." oninput="filterUsers()">
+    <div id="user-list"></div>
+  </div>
+</div>
+
+<!-- 重置密码弹窗 -->
+<div class="modal-overlay" id="modal-reset">
+  <div class="modal">
+    <div class="modal-title">重置密码</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">用户：<span id="reset-username" style="color:var(--text)"></span></div>
+    <div class="form-group">
+      <label class="form-label">新密码</label>
+      <input class="form-input" id="reset-newpass" type="password" placeholder="至少6位">
+    </div>
+    <div style="color:var(--pink);font-size:12px;min-height:16px" id="reset-error"></div>
+    <div class="modal-actions">
+      <button class="btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn-cyan" onclick="confirmReset()">确认重置</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/db.js"></script>
+<script>
+let allUsers = [];
+let resetTarget = '';
+
+function init() {
+  DB.requireLogin(true);
+  loadData();
+}
+
+function doLogout() { DB.logout(); window.location.href = 'index.html'; }
+
+function loadData() {
+  allUsers = DB.getAllUsers().filter(u => u.username !== 'admin' || true);
+  renderOverview();
+  renderUsers(allUsers);
+}
+
+function renderOverview() {
+  const total = allUsers.length;
+  const active = allUsers.filter(u => !u.disabled).length;
+  const totalCorrect = allUsers.reduce((s, u) => s + (u.totalCorrect + u.totalWrong), 0);
+  const totalMastered = allUsers.reduce((s, u) => s + (u.masteredCount || 0), 0);
+
+  document.getElementById('s-total-users').textContent = total;
+  document.getElementById('s-active-users').textContent = active;
+  document.getElementById('s-total-correct').textContent = totalCorrect;
+  document.getElementById('s-total-mastered').textContent = totalMastered;
+
+  // 排行榜
+  const sorted = [...allUsers].sort((a, b) => (b.masteredCount || 0) - (a.masteredCount || 0)).slice(0, 10);
+  const lb = document.getElementById('leaderboard');
+  if (sorted.length === 0) {
+    lb.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-icon">📊</div><div class="empty-text">暂无用户数据</div></div>';
+    return;
+  }
+  lb.innerHTML = sorted.map((u, i) => {
+    const medals = ['🥇', '🥈', '🥉'];
+    const medal = medals[i] || (i + 1) + '.';
+    const total2 = u.totalCorrect + u.totalWrong;
+    const acc = total2 > 0 ? Math.round(u.totalCorrect / total2 * 100) : 0;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="display:flex;align-items:center;gap:12px">' +
+      '<span style="font-size:18px;width:28px">' + medal + '</span>' +
+      '<div><div style="font-size:15px;font-weight:700">' + (u.nickname || u.username) + '</div>' +
+      '<div style="font-size:11px;color:var(--muted)">@' + u.username + ' · 连续 ' + (u.streak||0) + ' 天</div></div>' +
+      '</div>' +
+      '<div style="text-align:right">' +
+      '<div style="font-size:17px;font-weight:700;color:var(--green)">' + (u.masteredCount||0) + '</div>' +
+      '<div style="font-size:10px;color:var(--muted)">熟词 · 正确率 ' + acc + '%</div>' +
+      '</div></div>';
+  }).join('');
+}
+
+function renderUsers(users) {
+  const list = document.getElementById('user-list');
+  if (users.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">暂无用户</div></div>';
+    return;
+  }
+  list.innerHTML = users.map(u => {
+    const total = u.totalCorrect + u.totalWrong;
+    const acc = total > 0 ? Math.round(u.totalCorrect / total * 100) : 0;
+    const isAdmin = u.role === 'admin';
+    return '<div class="user-item">' +
+      '<div class="user-header">' +
+      '<div><div class="user-name">' + (u.nickname || u.username) + (u.disabled ? ' <span style="color:var(--red);font-size:12px">已禁用</span>' : '') + '</div>' +
+      '<div class="user-nick">@' + u.username + ' · 注册: ' + new Date(u.createdAt).toLocaleDateString('zh-CN') + '</div></div>' +
+      '<span class="user-role-badge ' + (isAdmin ? 'role-admin' : 'role-user') + '">' + (isAdmin ? '管理员' : '普通用户') + '</span>' +
+      '</div>' +
+      '<div class="user-stats">' +
+      '<span>今日: <span>' + (u.todayCount||0) + '</span></span>' +
+      '<span>正确率: <span>' + acc + '%</span></span>' +
+      '<span>连续: <span>' + (u.streak||0) + '天</span></span>' +
+      '<span>熟词: <span>' + (u.masteredCount||0) + '</span></span>' +
+      '<span>错题: <span>' + (u.errorCount||0) + '</span></span>' +
+      '</div>' +
+      (!isAdmin ? '<div class="user-actions">' +
+      '<button class="btn-cyan" onclick="openReset(\'' + u.username + '\')">重置密码</button>' +
+      '<button class="btn-outline" onclick="toggleDisable(\'' + u.username + '\')">' + (u.disabled ? '✅ 启用' : '🚫 禁用') + '</button>' +
+      '<button class="btn-danger" onclick="deleteUser(\'' + u.username + '\')">删除</button>' +
+      '</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function filterUsers() {
+  const q = document.getElementById('user-search').value.toLowerCase();
+  const filtered = allUsers.filter(u =>
+    u.username.toLowerCase().includes(q) || (u.nickname || '').toLowerCase().includes(q)
+  );
+  renderUsers(filtered);
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.admin-page').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.querySelectorAll('.admin-tab').forEach((t, i) => {
+    if (['overview', 'users'][i] === tab) t.classList.add('active');
+  });
+  event.target.classList.add('active');
+}
+
+function toggleDisable(username) {
+  if (!confirm('确认' + (allUsers.find(u => u.username === username)?.disabled ? '启用' : '禁用') + '用户 ' + username + '？')) return;
+  DB.toggleDisable(username);
+  loadData();
+}
+
+function deleteUser(username) {
+  if (!confirm('确认永久删除用户 ' + username + ' 及所有数据？此操作不可撤销！')) return;
+  DB.deleteUser(username);
+  loadData();
+}
+
+function openReset(username) {
+  resetTarget = username;
+  document.getElementById('reset-username').textContent = username;
+  document.getElementById('reset-newpass').value = '';
+  document.getElementById('reset-error').textContent = '';
+  document.getElementById('modal-reset').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-reset').classList.remove('open');
+}
+
+function confirmReset() {
+  const newPass = document.getElementById('reset-newpass').value;
+  if (newPass.length < 6) { document.getElementById('reset-error').textContent = '密码至少6位'; return; }
+  DB.resetPassword(resetTarget, newPass);
+  closeModal();
+  showAdminToast('密码已重置！');
+}
+
+function showAdminToast(msg) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;padding:10px 20px;border-radius:20px;font-weight:700;font-size:13px;z-index:9999;animation:toastAnim 2s forwards';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+init();
+</script>
+</body>
+</html>
