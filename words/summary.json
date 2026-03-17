@@ -1,0 +1,30 @@
+{
+  "middle": {
+    "name": "初中",
+    "count": 3223
+  },
+  "high": {
+    "name": "高中",
+    "count": 6008
+  },
+  "cet4": {
+    "name": "CET-4 四级",
+    "count": 7508
+  },
+  "cet6": {
+    "name": "CET-6 六级",
+    "count": 5651
+  },
+  "postgrad": {
+    "name": "考研",
+    "count": 9602
+  },
+  "toefl": {
+    "name": "TOEFL 托福",
+    "count": 13477
+  },
+  "sat": {
+    "name": "SAT",
+    "count": 8887
+  }
+}
