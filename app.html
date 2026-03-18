@@ -420,8 +420,10 @@ async function startNewSession() {
 
 async function startReview() {
   // 复习词可能分布在多个级别，需要它们都已加载
-  const words = getDueWords(100);
-  if (words.length === 0) { showToast('暂无待复习单词！', 'streak'); return; }
+  const dueWords = getDueWords(100);
+  if (dueWords.length === 0) { showToast('暂无待复习单词！', 'streak'); return; }
+  // 打乱顺序
+  const words = shuffleArray(dueWords);
   startQuizWith(words, '复习');
 }
 
@@ -431,7 +433,9 @@ function startErrorReview() {
     _key: e._key || null, _lvl: e._lvl || null, _isNew: false, _isError: true
   }));
   if (errorWords.length === 0) { showToast('暂无错题！', 'streak'); return; }
-  startQuizWith(errorWords, '错题复习');
+  // 打乱顺序
+  const words = shuffleArray(errorWords);
+  startQuizWith(words, '错题复习');
 }
 
 function startQuizWith(words, label) {
