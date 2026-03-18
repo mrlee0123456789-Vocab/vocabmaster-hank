@@ -15,7 +15,8 @@
 .login-logo { font-size: 48px; margin-bottom: 8px; }
 .login-title { font-size: 28px; font-weight: 800; background: linear-gradient(135deg, var(--cyan), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; }
 .login-sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
-.login-author { color: var(--muted); font-size: 12px; margin-bottom: 24px; opacity: 0.5; letter-spacing: 1px; }
+.login-author { color: var(--muted); font-size: 12px; margin-bottom: 12px; opacity: 0.5; letter-spacing: 1px; }
+.version-tag { color: var(--cyan); font-size: 11px; background: rgba(34,211,238,0.1); padding: 4px 10px; border-radius: 12px; margin-bottom: 24px; letter-spacing: 0.5px; }
 .login-card { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px 24px; }
 .tab-switch { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 24px; }
 .tab-switch-btn { flex: 1; padding: 8px; border-radius: 8px; border: none; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
@@ -39,6 +40,7 @@
   <div class="login-title">VocabMaster</div>
   <div class="login-sub">智能词汇学习 · 艾宾浩斯记忆曲线</div>
   <div class="login-author">By Hank</div>
+  <div class="version-tag">v1.0.3</div>
 
   <div class="login-card">
     <div class="tab-switch">
@@ -58,7 +60,6 @@
       </div>
       <div class="error-msg" id="login-error"></div>
       <button class="login-btn" onclick="doLogin()">登 录</button>
-      <div class="admin-hint">管理员账号：admin / admin888</div>
     </div>
 
     <!-- 注册表单 -->
